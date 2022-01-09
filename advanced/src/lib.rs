@@ -1,6 +1,6 @@
 pub mod aggregator {
 
-    use std::ops::Deref;
+    // use std::ops::Deref;
 
     pub trait Summary {
         fn summarize(&self) -> String;

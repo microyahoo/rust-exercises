@@ -4,6 +4,9 @@ use std::fmt::Display;
 use advanced::aggregator;
 use advanced::aggregator::Summary;
 use std::env;
+use std::sync::mpsc;
+use std::thread;
+use std::time::Duration;
 
 fn largest<T: std::cmp::PartialOrd>(list: &[T]) -> &T {
     let mut largest = &list[0];
@@ -151,7 +154,42 @@ fn main() {
     println!("b after = {:?}", b);
     println!("c after = {:?}", c);
 
-    println!("=============================panic==================================");
+    println!("=============================channel==================================");
+    let (tx, rx) = mpsc::channel();
+    let tx1 = mpsc::Sender::clone(&tx);
+
+    thread::spawn(move || {
+        let vals = vec![
+            String::from("1 hi"),
+            String::from("1 from"),
+            String::from("1 the"),
+            String::from("1 thread"),
+        ];
+
+        for val in vals {
+            tx1.send(val).unwrap();
+            thread::sleep(Duration::from_secs(1));
+        }
+    });
+
+    thread::spawn(move || {
+        // NOTE: move 不能少
+        let vals = vec![
+            String::from("more"),
+            String::from("messages"),
+            String::from("for"),
+            String::from("you"),
+        ];
+
+        for val in vals {
+            tx.send(val).unwrap();
+            thread::sleep(Duration::from_secs(1));
+        }
+    });
+
+    for received in rx {
+        println!("Got {}", received);
+    }
 }
 
 use crate::List::{Cons, Nil};
