@@ -1,17 +1,21 @@
-// fn largest<T: std::cmp::PartialOrd>(list: &[T]) -> T {
-//     let mut largest = list[0];
-
-//     for item in list.iter() {
-//         if *item > largest {
-//             largest = *item;
-//         }
-//     }
-
-//     largest
-// }
+use std::fmt::Debug;
+use std::fmt::Display;
 
 use advanced::aggregator;
 use advanced::aggregator::Summary;
+use std::env;
+
+fn largest<T: std::cmp::PartialOrd>(list: &[T]) -> &T {
+    let mut largest = &list[0];
+
+    for item in list.iter() {
+        if item > largest {
+            largest = item;
+        }
+    }
+
+    largest
+}
 
 #[derive(Debug)]
 struct Point<T, V> {
@@ -41,17 +45,56 @@ impl Point<f32, f32> {
     }
 }
 
+pub fn notify(item: impl Summary) {
+    println!("Breaking news! {}", item.summarize());
+}
+
+pub fn notify1<T: Summary>(item: T) {
+    println!("Breaking news! {}", item.summarize());
+}
+
+pub fn notify2<T: Summary + Display>(item: T) {
+    println!("Breaking news! {}", item.summarize());
+}
+
+pub fn some_function<T, U>(_t: T, _u: U) -> i32
+where
+    T: Display + Clone,
+    U: Clone + Debug,
+{
+    1
+}
+
+// longest 函数返回的引用的生命周期与传入该函数的引用的生命周期的较小者一致。
+fn longest<'a>(x: &'a str, y: &'a str) -> &'a str {
+    if x.len() > y.len() {
+        x
+    } else {
+        y
+    }
+}
+
 fn main() {
-    // let number_list = vec![34, 56, 12, 9];
-    // let result = largest(&number_list);
-    // println!("The largest number is {}", result);
+    println!("=========================largest======================================");
+    let number_list = vec![34, 56, 12, 9];
+    let result = largest(&number_list);
+    println!("The largest number is {}", result);
 
-    // let char_list = vec!['y', 'm', 'a', 'q'];
+    let char_list = vec!['y', 'm', 'a', 'q'];
 
-    // let result = largest(&char_list);
-    // println!("The largest char is {}", result);
+    let result = largest(&char_list);
+    println!("The largest char is {}", result);
 
-    println!("===============================================================");
+    let string_list = vec![
+        String::from("hello"),
+        String::from("hi"),
+        String::from("advanced"),
+        String::from("ipad"),
+    ];
+    let result = largest(&string_list);
+    println!("The largest string is {}", result);
+
+    println!("============================Point===================================");
     let p = Point { x: 5, y: 6.06 };
     println!("p = {:?}", p);
     println!("p.x = {:?}", p.x());
@@ -75,10 +118,48 @@ fn main() {
     };
 
     println!("1 new tweet: {:?}", tweet);
-    println!("1 new tweet: {:?}", tweet.sum());
+    println!("1 new tweet: {:?}", tweet.summ());
     println!("1 new tweet: {:?}", tweet.summarize()); // NOTE: 需要 use advanced::aggregator::Summary;
 
+    notify(tweet);
+
+    println!("{}", 3.to_string());
+
+    println!("=============================lifetime==================================");
+    let string1 = String::from("abcd");
+    let string2 = "xyz";
+    let result = longest(string1.as_str(), string2);
+    println!("The longest string is '{}'", result);
+
+    let _case_insensitive = env::var("CASE_INSENSITIVE").is_err();
+
+    println!("=============================Rc and RefCell==================================");
+    let value = Rc::new(RefCell::new(5));
+    // let a = Cons(Rc::clone(&value), Rc::new(Nil));
+    let a = Rc::new(Cons(Rc::clone(&value), Rc::new(Nil)));
+
+    let b = Cons(Rc::new(RefCell::new(6)), Rc::clone(&a));
+    let c = Cons(Rc::new(RefCell::new(16)), Rc::clone(&a));
+
+    println!("a before = {:?}", a);
+    println!("b before = {:?}", b);
+    println!("c before = {:?}", c);
+
+    *value.borrow_mut() += 10;
+
+    println!("a after = {:?}", a);
+    println!("b after = {:?}", b);
+    println!("c after = {:?}", c);
+
     println!("=============================panic==================================");
-    println!("=============================panic==================================");
-    println!("=============================panic==================================");
+}
+
+use crate::List::{Cons, Nil};
+use std::cell::RefCell;
+use std::rc::Rc;
+
+#[derive(Debug)]
+enum List {
+    Cons(Rc<RefCell<i32>>, Rc<List>),
+    Nil,
 }

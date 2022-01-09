@@ -1,5 +1,7 @@
 pub mod aggregator {
 
+    use std::ops::Deref;
+
     pub trait Summary {
         fn summarize(&self) -> String;
     }
@@ -32,8 +34,18 @@ pub mod aggregator {
     }
 
     impl Tweet {
-        pub fn sum(&self) -> String {
+        pub fn summ(&self) -> String {
             self.summarize()
         }
     }
+
+    // impl Summary for Vec<T> {}
+
+    // impl Deref for Tweet {
+    //     type Target = Tweet;
+
+    //     fn deref(&self) -> &Tweet {
+    //         &self.0
+    //     }
+    // }
 }
