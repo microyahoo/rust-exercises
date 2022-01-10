@@ -1,5 +1,6 @@
 use std::fmt::Debug;
 use std::fmt::Display;
+use std::ops::Deref;
 
 use advanced::aggregator;
 use advanced::aggregator::Summary;
@@ -154,6 +155,84 @@ fn main() {
     println!("b after = {:?}", b);
     println!("c after = {:?}", c);
 
+    println!("=============================closure==================================");
+    let simulated_user_specified_value = 10;
+    let simulated_random_number = 7;
+
+    generate_workout(simulated_user_specified_value, simulated_random_number);
+
+    println!("=============================Iterator==================================");
+    let v1 = vec![1, 2, 3];
+
+    let mut v1_iter = v1.iter();
+
+    println!("{:?}", v1_iter.next());
+    println!("{:?}", v1_iter.next());
+    println!("{:?}", v1_iter.next());
+    println!("{:?}", v1_iter.next());
+    println!("{:?}", v1_iter.next());
+    let total: i32 = v1_iter.sum(); // 调用 sum 之后不再允许使用 v1_iter 因为调用 sum 时它会获取迭代器的所有权。
+    println!("sum = {:?}", total);
+
+    let v1 = vec![1, 2, 3];
+    for i in v1.iter().map(|x| x + 1) {
+        println!("i = {}", i);
+    }
+    let v2: Vec<_> = v1.iter().map(|x| x + 1).collect();
+    println!("v2 = {:?}", v2);
+
+    let shoes = vec![
+        Shoe {
+            size: 10,
+            style: String::from("sneaker"),
+        },
+        Shoe {
+            size: 13,
+            style: String::from("sandal"),
+        },
+        Shoe {
+            size: 10,
+            style: String::from("boot"),
+        },
+    ];
+
+    let in_my_size = shoes_in_my_size(shoes, 10);
+    println!("{:?}", in_my_size);
+
+    let sum: u32 = Counter::new()
+        .zip(Counter::new().skip(2))
+        .map(|(a, b)| a * b)
+        .filter(|x| x % 3 == 0)
+        .sum();
+    println!("sum = {}", sum);
+
+    println!("=============================deref==================================");
+    let x = 5;
+    let y = MyBox::new(x);
+    println!("mybox = {}", *y); // *(y.deref())
+
+    let m = MyBox::new(String::from("Rust"));
+    hello(&m);
+
+    println!("=============================drop==================================");
+    {
+        let c = CustomSmartPointer {
+            data: String::from("my stuff"),
+        };
+        let d = CustomSmartPointer {
+            data: String::from("other stuff"),
+        };
+        println!("CustomSmartPointers created.");
+    }
+
+    {
+        let c = CustomSmartPointer {
+            data: String::from("some data"),
+        };
+        println!("CustomSmartPointer created.");
+        std::mem::drop(c);
+        println!("CustomSmartPointer dropped before the end of main.");
+    }
     println!("=============================channel==================================");
     let (tx, rx) = mpsc::channel();
     let tx1 = mpsc::Sender::clone(&tx);
@@ -192,6 +271,131 @@ fn main() {
     }
 }
 
+// begin =============================drop==================================
+struct CustomSmartPointer {
+    data: String,
+}
+
+impl Drop for CustomSmartPointer {
+    fn drop(&mut self) {
+        println!("Dropping CustomSmartPointer with data `{}`!", self.data);
+    }
+}
+// end =============================drop==================================
+
+// begin =============================deref==================================
+struct MyBox<T>(T);
+
+impl<T> MyBox<T> {
+    fn new(x: T) -> MyBox<T> {
+        MyBox(x)
+    }
+}
+
+impl<T> Deref for MyBox<T> {
+    type Target = T;
+
+    fn deref(&self) -> &T {
+        &self.0
+    }
+}
+
+fn hello(name: &str) {
+    println!("Hello, {}!", name);
+}
+
+// end =============================deref==================================
+
+// begin =============================iterate==================================
+#[derive(Debug)]
+struct Shoe {
+    size: u32,
+    style: String,
+}
+
+fn shoes_in_my_size(shoes: Vec<Shoe>, shoe_size: u32) -> Vec<Shoe> {
+    shoes.into_iter().filter(|s| s.size == shoe_size).collect() // into_iter 来创建一个获取 vector 所有权的迭代器
+}
+
+struct Counter {
+    count: u32,
+}
+
+impl Counter {
+    fn new() -> Counter {
+        Counter { count: 0 }
+    }
+}
+
+impl Iterator for Counter {
+    type Item = u32;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        self.count += 1;
+
+        if self.count < 6 {
+            Some(self.count)
+        } else {
+            None
+        }
+    }
+}
+
+// begin =============================closure==================================
+struct Cacher<T>
+where
+    T: Fn(u32) -> u32,
+{
+    calculation: T,
+    value: Option<u32>,
+}
+
+impl<T> Cacher<T>
+where
+    T: Fn(u32) -> u32,
+{
+    fn new(calculation: T) -> Cacher<T> {
+        Cacher {
+            calculation,
+            value: None,
+        }
+    }
+
+    fn value(&mut self, arg: u32) -> u32 {
+        match self.value {
+            Some(v) => v,
+            None => {
+                let v = (self.calculation)(arg);
+                self.value = Some(v);
+                v
+            }
+        }
+    }
+}
+
+fn generate_workout(intensity: u32, random_number: u32) {
+    let mut expensive_result = Cacher::new(|num| {
+        println!("calculating slowly...");
+        thread::sleep(Duration::from_secs(2));
+        num
+    });
+
+    if intensity < 25 {
+        println!("Today, do {} pushups!", expensive_result.value(intensity));
+        println!("Next, do {} situps!", expensive_result.value(intensity));
+    } else {
+        if random_number == 3 {
+            println!("Take a break today! Remember to stay hydrated!");
+        } else {
+            println!(
+                "Today, run for {} minutes!",
+                expensive_result.value(intensity)
+            );
+        }
+    }
+}
+// end =============================closure==================================
+
 use crate::List::{Cons, Nil};
 use std::cell::RefCell;
 use std::rc::Rc;
@@ -201,3 +405,12 @@ enum List {
     Cons(Rc<RefCell<i32>>, Rc<List>),
     Nil,
 }
+
+// fn live() {
+//     let a: &usize;
+//     {
+//         let b: usize = 5;
+//         a = &b;
+//     }
+//     println!("{}", a);
+// }
