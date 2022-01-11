@@ -5,7 +5,7 @@ use std::ops::Deref;
 use advanced::aggregator;
 use advanced::aggregator::Summary;
 use std::env;
-use std::sync::mpsc;
+use std::sync::{mpsc, Arc, Mutex};
 use std::thread;
 use std::time::Duration;
 
@@ -138,6 +138,18 @@ fn main() {
     let _case_insensitive = env::var("CASE_INSENSITIVE").is_err();
 
     println!("=============================Rc and RefCell==================================");
+    let a = Rc::new(Cons1(5, Rc::new(Cons1(10, Rc::new(Nil1)))));
+    println!("count after creating a = {}", Rc::strong_count(&a));
+    let b = Cons1(3, Rc::clone(&a));
+    println!("count after creating b = {}", Rc::strong_count(&a));
+    {
+        let c = Cons1(4, Rc::clone(&a));
+        println!("count after creating c = {}", Rc::strong_count(&a));
+    }
+    println!("count after c goes out of scope = {}", Rc::strong_count(&a));
+
+    println!("===============================================================");
+
     let value = Rc::new(RefCell::new(5));
     // let a = Cons(Rc::clone(&value), Rc::new(Nil));
     let a = Rc::new(Cons(Rc::clone(&value), Rc::new(Nil)));
@@ -149,11 +161,77 @@ fn main() {
     println!("b before = {:?}", b);
     println!("c before = {:?}", c);
 
-    *value.borrow_mut() += 10;
+    *value.borrow_mut() += 10; // 自动解引用
 
     println!("a after = {:?}", a);
     println!("b after = {:?}", b);
     println!("c after = {:?}", c);
+    println!("===============================================================");
+
+    let mock_messager = MockMessenger::new();
+    let mut limit_tracker = LimitTracker::new(&mock_messager, 100);
+    limit_tracker.set_value(80);
+    println!(
+        "message length: {}",
+        mock_messager.sent_messages.borrow().len()
+    );
+    println!("===============================================================");
+
+    let a = Rc::new(Cons2(5, RefCell::new(Rc::new(Nil2))));
+
+    println!("a initial rc count = {}", Rc::strong_count(&a));
+    println!("a next item = {:?}", a.tail());
+
+    let b = Rc::new(Cons2(10, RefCell::new(Rc::clone(&a))));
+
+    println!("a rc count after b creation = {}", Rc::strong_count(&a));
+    println!("b initial rc count = {}", Rc::strong_count(&b));
+    println!("b next item = {:?}", b.tail());
+
+    if let Some(link) = a.tail() {
+        *link.borrow_mut() = Rc::clone(&b);
+    }
+
+    println!("b rc count after changing a = {}", Rc::strong_count(&b));
+    println!("a rc count after changing a = {}", Rc::strong_count(&a));
+
+    println!("===============================================================");
+    let leaf = Rc::new(Node {
+        value: 3,
+        parent: RefCell::new(Weak::new()),
+        children: RefCell::new(vec![]),
+    });
+    println!(
+        "leaf strong = {}, weak = {}",
+        Rc::strong_count(&leaf),
+        Rc::weak_count(&leaf),
+    );
+    println!("leaf parent = {:?}", leaf.parent.borrow().upgrade());
+    {
+        let branch = Rc::new(Node {
+            value: 5,
+            parent: RefCell::new(Weak::new()),
+            children: RefCell::new(vec![Rc::clone(&leaf)]),
+        });
+        *leaf.parent.borrow_mut() = Rc::downgrade(&branch);
+        println!(
+            "branch strong = {}, weak = {}",
+            Rc::strong_count(&branch),
+            Rc::weak_count(&branch),
+        );
+
+        println!(
+            "leaf strong = {}, weak = {}",
+            Rc::strong_count(&leaf),
+            Rc::weak_count(&leaf),
+        );
+    }
+    println!("leaf parent = {:?}", leaf.parent.borrow().upgrade());
+    println!(
+        "leaf strong = {}, weak = {}",
+        Rc::strong_count(&leaf),
+        Rc::weak_count(&leaf),
+    );
 
     println!("=============================closure==================================");
     let simulated_user_specified_value = 10;
@@ -247,7 +325,7 @@ fn main() {
 
         for val in vals {
             tx1.send(val).unwrap();
-            thread::sleep(Duration::from_secs(1));
+            thread::sleep(Duration::from_millis(100));
         }
     });
 
@@ -262,14 +340,47 @@ fn main() {
 
         for val in vals {
             tx.send(val).unwrap();
-            thread::sleep(Duration::from_secs(1));
+            thread::sleep(Duration::from_millis(100));
         }
     });
 
     for received in rx {
         println!("Got {}", received);
     }
+
+    println!("=============================Mutex and Arc==================================");
+    let counter = Arc::new(Mutex::new(0));
+    let mut handles = vec![];
+
+    for _ in 0..10 {
+        let counter = Arc::clone(&counter);
+        let handle = thread::spawn(move || {
+            let mut num = counter.lock().unwrap();
+            *num += 1;
+        });
+        handles.push(handle);
+    }
+
+    for handle in handles {
+        handle.join().unwrap();
+    }
+    println!("Result: {}", *counter.lock().unwrap());
 }
+
+// begin =============================macro==================================
+#[macro_export]
+macro_rules! vec_example {
+    ( $( $x:expr ),* ) => {
+        {
+            let mut temp_vec = Vec::new();
+            $(
+                temp_vec.push($x);
+            )*
+            temp_vec
+        }
+    };
+}
+// end =============================macro==================================
 
 // begin =============================drop==================================
 struct CustomSmartPointer {
@@ -396,15 +507,109 @@ fn generate_workout(intensity: u32, random_number: u32) {
 }
 // end =============================closure==================================
 
+// begin =============================Rc and RefCell==================================
 use crate::List::{Cons, Nil};
+use crate::List1::{Cons1, Nil1};
+use crate::List2::{Cons2, Nil2};
 use std::cell::RefCell;
-use std::rc::Rc;
+use std::rc::{Rc, Weak};
+
+#[derive(Debug)]
+enum List1 {
+    Cons1(i32, Rc<List1>),
+    Nil1,
+}
+
+#[derive(Debug)]
+enum List2 {
+    Cons2(i32, RefCell<Rc<List2>>),
+    Nil2,
+}
+
+impl List2 {
+    fn tail(&self) -> Option<&RefCell<Rc<List2>>> {
+        match self {
+            Cons2(_, item) => Some(item),
+            Nil2 => None,
+        }
+    }
+}
 
 #[derive(Debug)]
 enum List {
     Cons(Rc<RefCell<i32>>, Rc<List>),
     Nil,
 }
+
+pub trait Messenger {
+    fn send(&self, msg: &str);
+}
+
+// =======================================================================================
+#[derive(Debug)]
+struct Node {
+    value: i32,
+    parent: RefCell<Weak<Node>>,
+    children: RefCell<Vec<Rc<Node>>>,
+}
+
+// =======================================================================================
+pub struct LimitTracker<'a, T: Messenger> {
+    messenger: &'a T,
+    value: usize,
+    max: usize,
+}
+
+impl<'a, T> LimitTracker<'a, T>
+where
+    T: Messenger,
+{
+    pub fn new(messenger: &T, max: usize) -> LimitTracker<T> {
+        LimitTracker {
+            messenger,
+            value: 0,
+            max,
+        }
+    }
+
+    pub fn set_value(&mut self, value: usize) {
+        self.value = value;
+
+        let percentage_of_max = self.value as f64 / self.max as f64;
+
+        if percentage_of_max >= 1.0 {
+            self.messenger.send("Error: You are over your quota!");
+        } else if percentage_of_max >= 0.9 {
+            self.messenger
+                .send("Urgent warning: You've used up over 90% of your quota!");
+        } else if percentage_of_max >= 0.75 {
+            self.messenger
+                .send("Warning: You've used up over 75% of your quota!");
+        }
+    }
+}
+
+struct MockMessenger {
+    // sent_messages: Vec<String>,
+    sent_messages: RefCell<Vec<String>>,
+}
+
+impl MockMessenger {
+    fn new() -> MockMessenger {
+        MockMessenger {
+            sent_messages: RefCell::new(vec![]),
+            // sent_messages: vec![],
+        }
+    }
+}
+
+impl Messenger for MockMessenger {
+    fn send(&self, message: &str) {
+        self.sent_messages.borrow_mut().push(String::from(message));
+        // self.sent_messages.push(String::from(message));
+    }
+}
+// end =============================Rc and RefCell==================================
 
 // fn live() {
 //     let a: &usize;
