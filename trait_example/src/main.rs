@@ -1,5 +1,74 @@
 fn main() {
-    println!("Hello, world!");
+    let c: Cat = Animal::new("Bobi");
+    println!("Cat's name is {} {} ", c.name(), c.age);
+    c.talk();
+
+    let stuffed: StuffedAnimal = Animal::new("BobiStuffed");
+    stuffed.talk();
+}
+
+// ================================================================================================
+
+// ================================================================================================
+
+// ================================================================================================
+
+// ================================================================================================
+trait Animal {
+    // Static method signature; `Self` refers to the implementor type.
+    fn new(name: &'static str) -> Self;
+
+    // Instance method signatures; these will return a string.
+    fn name(&self) -> &'static str;
+    fn noise(&self) -> &'static str;
+
+    // Traits can provide default method definitions.
+    fn talk(&self) {
+        println!("{} says {}", self.name(), self.noise());
+    }
+}
+
+struct Cat {
+    name: &'static str,
+    age: i32,
+}
+
+struct StuffedAnimal {
+    name: &'static str,
+}
+
+impl Animal for Cat {
+    fn new(name: &'static str) -> Cat {
+        Cat { name: name, age: 1 }
+    }
+
+    fn name(&self) -> &'static str {
+        self.name
+    }
+
+    fn noise(&self) -> &'static str {
+        "Meowww"
+    }
+
+    // Default trait methods can be overridden.
+    fn talk(&self) {
+        // For example, we can add some quiet contemplation.
+        println!("{} pauses briefly... {}", self.name, self.noise());
+    }
+}
+
+impl Animal for StuffedAnimal {
+    fn new(name: &'static str) -> StuffedAnimal {
+        StuffedAnimal { name: name }
+    }
+
+    fn name(&self) -> &'static str {
+        self.name
+    }
+
+    fn noise(&self) -> &'static str {
+        "<random factory noise>"
+    }
 }
 
 // ================================================================================================
