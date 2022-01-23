@@ -1,3 +1,5 @@
+use trace_caller::trace;
+
 fn main() {
     let c: Cat = Animal::new("Bobi");
     println!("Cat's name is {} {} ", c.name(), c.age);
@@ -5,13 +7,81 @@ fn main() {
 
     let stuffed: StuffedAnimal = Animal::new("BobiStuffed");
     stuffed.talk();
+
+    println!("=================================================");
+    // https://users.rust-lang.org/t/can-not-understand-temporary-value-dropped-while-borrowed/23279/7
+    // ERR: create a reference to a temporary that has been dropped.
+    // let foo = "FooBar".to_string().as_mut_str();
+    // println!("{}", foo);
+
+    // let foo = {
+    //     let mut __temp = "FooBar".to_string();
+    //     __temp.as_mut_str()
+    // };
+    // println!("{}", foo);
+
+    println!("=================================================");
+    // https://stackoverflow.com/questions/28587698/whats-the-difference-between-placing-mut-before-a-variable-name-and-after-the
+    // https://stackoverflow.com/questions/29672373/what-is-difference-between-mut-a-t-and-a-mut-t
+    let f1 = FullName {
+        first_name: String::from("Jobs"),
+        last_name: String::from("Steve"),
+    };
+
+    // mut a: &T
+    let mut a = &f1;
+    println!("{}: {}", a.last_name, a.first_name);
+
+    let f2 = FullName {
+        first_name: String::from("Gates"),
+        last_name: String::from("Bill"),
+    };
+    // a 重新绑定到一个新的 FullName 的引用
+    a = &f2;
+
+    // 不允许对 a 指向的内容作出修改
+    // a.first_name = String::from("Error"); // `a` is a `&` reference, so the data it refers to cannot be written
+
+    println!("{}: {}", a.last_name, a.first_name);
+
+    println!("=================================================");
+    let mut f1 = FullName {
+        first_name: String::from("Rust"),
+        last_name: String::from("The programming language"),
+    };
+    // mut a: &mut T
+    let a = &mut f1;
+    println!("{}: {}", a.last_name, a.first_name);
+    a.first_name = String::from("Golang");
+    println!("{}: {}", a.last_name, a.first_name);
+
+    // let mut f2 = FullName {
+    //     first_name: String::from("Python"),
+    //     last_name: String::from("The programming language"),
+    // };
+    // a = &mut f2; // [rustc E0384] [E] cannot assign twice to immutable variable `a`
+    // println!("{}: {}", a.last_name, a.first_name);
+    println!("=================================================");
+    println!("=================================================");
 }
 
 // ================================================================================================
 
 // ================================================================================================
+struct FullName {
+    first_name: String,
+    last_name: String,
+}
 
 // ================================================================================================
+fn modify_foo1(mut foo: Box<i32>) -> i32 {
+    *foo += 1;
+    *foo
+}
+fn modify_foo2(foo: &mut i32) -> i32 {
+    *foo += 1;
+    *foo
+}
 
 // ================================================================================================
 trait Animal {
@@ -38,6 +108,7 @@ struct StuffedAnimal {
 }
 
 impl Animal for Cat {
+    #[trace]
     fn new(name: &'static str) -> Cat {
         Cat { name: name, age: 1 }
     }
@@ -58,6 +129,7 @@ impl Animal for Cat {
 }
 
 impl Animal for StuffedAnimal {
+    #[trace]
     fn new(name: &'static str) -> StuffedAnimal {
         StuffedAnimal { name: name }
     }
@@ -103,4 +175,11 @@ impl PartialEq for Employee {
     fn eq(&self, other: &Self) -> bool {
         self.name == other.name
     }
+}
+
+pub fn bigger(a: i32, b: i32) -> i32 {
+    if a > b {
+        return a;
+    }
+    b
 }
