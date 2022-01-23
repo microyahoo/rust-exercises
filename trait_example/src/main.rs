@@ -61,11 +61,24 @@ fn main() {
     // };
     // a = &mut f2; // [rustc E0384] [E] cannot assign twice to immutable variable `a`
     // println!("{}: {}", a.last_name, a.first_name);
+
     println!("=================================================");
+    compose(5, |n: i32| n + 32, |n: i32| n * 2);
+
     println!("=================================================");
 }
 
 // ================================================================================================
+// That is because in Rust each closure has its own unique type. So, not only do closures with different
+// signatures have different types, but different closures with the same signature have different types, as well!
+// https://medium.com/coding-rust/best-explanation-of-closure-in-rust-2b20210eba53
+fn compose<F, G>(x: i32, f: F, g: G) -> i32
+where
+    F: Fn(i32) -> i32,
+    G: Fn(i32) -> i32,
+{
+    g(f(x))
+}
 
 // ================================================================================================
 struct FullName {
