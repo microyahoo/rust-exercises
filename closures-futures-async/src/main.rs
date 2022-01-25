@@ -1,13 +1,15 @@
 // https://levelup.gitconnected.com/demystifying-closures-futures-and-async-await-in-rust-part-2-futures-abe95ab332a2
-//
 use std::convert::Infallible;
 use std::error::Error;
 use std::future::Future;
 use std::pin::Pin;
+use std::time::Duration;
 
 use futures::future;
+use futures::future::FutureExt;
 use log::debug;
 use simplelog::{ConfigBuilder, LevelFilter, SimpleLogger};
+use tokio::time::delay_for;
 
 fn main() {
     let config = ConfigBuilder::new()
@@ -48,6 +50,8 @@ fn main() {
     println!("=============================================================================");
     // let mut rt = tokio::runtime::Runtime::new().unwrap();
     let mut rt = tokio::runtime::Builder::new()
+        // .enable_all() // https://docs.rs/tokio/0.2.25/tokio/runtime/struct.Builder.html#method.enable_all
+        .enable_time()
         .threaded_scheduler()
         .core_threads(4)
         .on_thread_start(|| debug!("on_thread_start()"))
@@ -72,9 +76,22 @@ fn main() {
     // the trait `std::marker::Unpin` is not implemented for `dyn futures::Future<Output = i32>`
     // rt.block_on(returns_dyn_future_i32());
     rt.block_on(returns_pin_dyn_future_i32());
+    println!("=============================================================================");
+    rt.block_on(returns_future_chain());
+
+    println!("=============================================================================");
+    // let result = rt.enter(|| returns_delayed_future());
+    // let result = rt.block_on(returns_delayed_future()); //thread 'main' panicked at 'there is no timer running, must be called from the context of a Tokio 0.2.x runtime'
+    // debug!("{}", result);
+
+    println!("=============================================================================");
+    // todo!()
 
     // future::ready(42);
+    // https://docs.rs/futures/latest/futures/future/trait.FutureExt.html
     // future::ready(42).boxed();
+
+    println!("=============================================================================");
 }
 
 // NOTE: to return `impl Trait`, all returned values must be of the same type
@@ -86,6 +103,7 @@ fn returns_impl_future_i32() -> impl Future<Output = i32> {
     // future::lazy(|_| 1337)
 }
 
+// NOTE: the trait `std::marker::Unpin` is not implemented for `dyn futures::Future<Output = i32>`
 fn returns_dyn_future_i32() -> Box<dyn Future<Output = i32>> {
     if rand::random() {
         Box::new(future::ready(42))
@@ -102,33 +120,6 @@ fn returns_pin_dyn_future_i32() -> Pin<Box<dyn Future<Output = i32>>> {
     }
 }
 
-// fn returns_future_chain() -> impl Future<Output = ()> {
-//     future::lazy(|_| debug!("in returns_future_chain()"))
-//         .then(|_| {
-//             debug!("in first then");
-//             future::ready("Hello from rt.block_on()")
-//         })
-//         .inspect(|result| debug!("future::ready() -> {}", result))
-//         .then(|_| returns_impl_future_i32())
-//         .inspect(|result| debug!("returns_impl_future_i32() -> {}", result))
-//         .then(|_| returns_dyn_future_i32())
-//         .inspect(|result| debug!("returns_dyn_future_i32() -> {}", result))
-//         .then(|_| returns_future_result())
-//         .map(|result| result.unwrap())
-//         .inspect(|result| debug!("returns_future_result().unwrap() -> {}", result))
-//         .then(|_| returns_future_result_dyn_error())
-//         .map(|result| result.unwrap())
-//         .inspect(|result| debug!("returns_future_result_dyn_error().unwrap() -> {}", result))
-//         .then(|_| returns_delayed_future())
-//         .inspect(|result| debug!("returns_delayed_future() -> {}", result))
-//         .then(|_| wait_a_sec(future::ready(42)))
-//         .inspect(|result| debug!("wait_a_sec(future::ready(42)) -> {}", result))
-//         .then(|_| {
-//             debug!("in last then");
-//             future::ready(())
-//         })
-// }
-
 fn returns_future_chain() -> impl Future<Output = ()> {
     future::lazy(|_| debug!("in returns_future_chain()"))
         .then(|_| {
@@ -138,11 +129,15 @@ fn returns_future_chain() -> impl Future<Output = ()> {
         .inspect(|result| debug!("future::ready() -> {}", result))
         .then(|_| returns_impl_future_i32())
         .inspect(|result| debug!("returns_impl_future_i32() -> {}", result))
-        .then(|_| returns_dyn_future_i32())
-        .inspect(|result| debug!("returns_dyn_future_i32() -> {}", result))
+        .then(|_| returns_pin_dyn_future_i32())
+        .inspect(|result| debug!("returns_pin_dyn_future_i32() -> {}", result))
         .then(|_| returns_future_result())
         .map(|result| result.unwrap())
         .inspect(|result| debug!("returns_future_result().unwrap() -> {}", result))
+        .then(|_| returns_delayed_future())
+        .inspect(|result| debug!("returns_delayed_future() -> {}", result))
+        .then(|_| wait_a_sec(future::ready(42)))
+        .inspect(|result| debug!("wait_a_sec(future::ready(42)) -> {}", result))
         .then(|_| {
             debug!("in last then");
             future::ready(())
@@ -157,6 +152,18 @@ fn returns_future_result() -> impl Future<Output = Result<i32, impl Error>> {
 fn returns_future_result2() -> impl Future<Output = Result<i32, Box<dyn Error>>> {
     future::ok(32) // cannot resolve opaque type
                    // future::ok::<i32, Infallible>(42)
+}
+
+fn wait_a_sec<F, O>(f: F) -> impl Future<Output = O>
+where
+    F: Future<Output = O>,
+{
+    let delay = Duration::from_millis(1000);
+    delay_for(delay).then(|_| f)
+}
+
+fn returns_delayed_future() -> impl Future<Output = i32> {
+    delay_for(Duration::from_millis(1500)).then(|_| futures::future::ready(42))
 }
 
 // fn receives_closure(closure: Fn(i32) -> i32) {} // Error
