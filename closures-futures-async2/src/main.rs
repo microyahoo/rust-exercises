@@ -1,7 +1,9 @@
 // https://levelup.gitconnected.com/demystifying-closures-futures-and-async-await-in-rust-part-2-futures-abe95ab332a2
 use std::convert::Infallible;
 use std::error::Error;
+use std::fs::File;
 use std::future::Future;
+use std::io::Read;
 use std::pin::Pin;
 use std::time::Duration;
 
@@ -169,6 +171,9 @@ async fn main() -> Result<(), Box<dyn Error>> {
 
     println!("===================================error==========================================");
     let _ = fallible().await?; // https://doc.rust-lang.org/book/ch09-02-recoverable-errors-with-result.html
+
+    let mut s = String::new();
+    File::open("hello.txt")?.read_to_string(&mut s)?;
     Ok(())
 }
 
