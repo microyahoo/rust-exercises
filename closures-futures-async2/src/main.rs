@@ -11,7 +11,9 @@ use log::debug;
 use simplelog::{ConfigBuilder, LevelFilter, SimpleLogger};
 use tokio::time::delay_for;
 
-fn main() {
+// https://docs.rs/tokio/0.2.20/tokio/attr.main.html
+#[tokio::main(core_threads = 4)]
+async fn main() -> Result<(), Box<dyn Error>> {
     let config = ConfigBuilder::new()
         .set_target_level(LevelFilter::Trace)
         .build();
@@ -49,35 +51,41 @@ fn main() {
 
     println!("=============================================================================");
     // let mut rt = tokio::runtime::Runtime::new().unwrap();
-    let mut rt = tokio::runtime::Builder::new()
-        // .enable_all() // https://docs.rs/tokio/0.2.25/tokio/runtime/struct.Builder.html#method.enable_all
-        .enable_time()
-        .threaded_scheduler()
-        .core_threads(4)
-        .on_thread_start(|| debug!("on_thread_start()"))
-        .build()
-        .unwrap();
-    rt.enter(|| {
-        // println!("in rt.enter()");
-        // tokio::spawn(future::lazy(|_| println!("in tokio::spawn")));
-        debug!("in rt.enter()");
-        tokio::spawn(future::lazy(|_| debug!("in tokio::spawn")));
-    });
-    rt.spawn(future::lazy(|_| debug!("in rt::spawn")));
-    rt.block_on(future::lazy(|_| debug!("in rt.block_on()")));
+    // let mut rt = tokio::runtime::Builder::new()
+    //     // .enable_all() // https://docs.rs/tokio/0.2.25/tokio/runtime/struct.Builder.html#method.enable_all
+    //     .enable_time()
+    //     .threaded_scheduler()
+    //     .core_threads(4)
+    //     .on_thread_start(|| debug!("on_thread_start()"))
+    //     .build()
+    //     .unwrap();
+
+    // rt.enter(|| {
+    // println!("in rt.enter()");
+    // tokio::spawn(future::lazy(|_| println!("in tokio::spawn")));
+    debug!("in rt.enter()");
+    tokio::spawn(future::lazy(|_| debug!("in tokio::spawn")));
+    // });
+
+    // rt.spawn(future::lazy(|_| debug!("in rt::spawn")));
+    tokio::spawn(future::lazy(|_| debug!("in rt::spawn")));
+    // rt.block_on(future::lazy(|_| debug!("in rt.block_on()")));
+    future::lazy(|_| debug!("in rt.block_on()")).await;
     // rt.spawn(future::lazy(|_| println!("in rt::spawn")));
     // rt.block_on(future::lazy(|_| println!("in rt.block_on()")));
 
     {
-        let result = rt.block_on(future::ready("Hello from rt.block_on()"));
+        // let result = rt.block_on(future::ready("Hello from rt.block_on()"));
+        let result = future::ready("Hello from rt.block_on()").await;
         debug!("{}", result);
     }
 
     // the trait `std::marker::Unpin` is not implemented for `dyn futures::Future<Output = i32>`
     // rt.block_on(returns_dyn_future_i32());
-    rt.block_on(returns_pin_dyn_future_i32());
+    // rt.block_on(returns_pin_dyn_future_i32());
+    returns_pin_dyn_future_i32().await;
     println!("=============================================================================");
-    rt.block_on(returns_future_chain());
+    returns_future_chain().await;
 
     println!("=============================================================================");
     // let result = rt.enter(|| returns_delayed_future());
@@ -95,30 +103,35 @@ fn main() {
     async {
         async_hello().await;
     };
-    rt.block_on(async_hello());
+    // rt.block_on(async_hello());
+    async_hello().await;
     {
         let x = 42;
         let async_capture = async {
             debug!("in async_capture, x => {}", x);
         };
-        rt.block_on(async_capture);
+        // rt.block_on(async_capture);
+        async_capture.await;
     }
     {
         let x = 42;
         let async_capture = future::lazy(|_| {
             debug!("in async_capture, x => {}", x);
         });
-        rt.block_on(async_capture);
+        // rt.block_on(async_capture);
+        async_capture.await;
     }
-    let r1 = rt.block_on(async_return_i32());
+    // let r1 = rt.block_on(async_return_i32());
+    let r1 = async_return_i32().await;
     debug!("async_return_i32 = {}", r1);
-    let r2 = rt.block_on(return_async_block_i32());
+    let r2 = return_async_block_i32().await;
     debug!("return_async_block_i32 = {}", r2);
 
     println!(
         "===================================async/await=========================================="
     );
-    rt.block_on(async {
+    // rt.block_on(async {
+    async {
         debug!("in rt.block_on()");
         let r0 = future::ready("Hello from rt.block_on()").await;
         debug!("{}", r0);
@@ -150,7 +163,18 @@ fn main() {
         debug!("returns_pin_dyn_future_i32 -> {}", r8);
         let r9 = return_async_block_i32().await;
         debug!("return_async_block_i32 -> {}", r9);
-    });
+        // });
+    }
+    .await;
+
+    println!("===================================error==========================================");
+    let _ = fallible().await?; // https://doc.rust-lang.org/book/ch09-02-recoverable-errors-with-result.html
+    Ok(())
+}
+
+async fn fallible() -> Result<(), Box<dyn Error>> {
+    let _f = std::fs::File::open("foo.txt")?;
+    Ok(())
 }
 
 async fn async_hello() {
