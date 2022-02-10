@@ -1,5 +1,7 @@
+use std::any::TypeId;
 use std::io::Write;
-use std::mem;
+use std::ptr::NonNull;
+use std::{fmt, mem};
 
 // ================================================================================================
 // https://cotigao.medium.com/dyn-impl-and-trait-objects-rust-fd7280521bea
@@ -205,8 +207,129 @@ fn main() {
     let mut i = 1;
     // let p: &mut dyn Double = &mut i as &mut dyn Double;
     // p.double();
+
+    println!("================================================================");
+    let a1 = Any::new(42_u32);
+    let a2 = Any::new(String::from("hello"));
+    dbg!(a1.type_id());
+    dbg!(a2.type_id());
+
+    dbg!(a1.downcast::<u32>().unwrap());
+    dbg!(a2.downcast_ref::<String>().unwrap());
+
+    let a3 = a2.clone();
+    dbg!(a3.downcast_ref::<String>().unwrap());
+
+    drop(a2);
+    drop(a3);
 }
 
+// =================================================================================
+// https://zhuanlan.zhihu.com/p/370713385
+pub struct Any {
+    data: NonNull<()>, // Box<T>
+    vtable: &'static AnyVTable,
+}
+
+unsafe impl Send for Any {}
+unsafe impl Sync for Any {}
+
+struct AnyVTable {
+    type_id: unsafe fn() -> TypeId,
+    drop: unsafe fn(*mut ()),
+    clone: unsafe fn(*const ()) -> Any,
+}
+
+impl AnyVTable {
+    unsafe fn v_type_id<T>() -> TypeId
+    where
+        T: Send + Sync + 'static,
+    {
+        TypeId::of::<T>()
+    }
+
+    unsafe fn v_drop<T>(this: *mut ())
+    where
+        T: Send + Sync + 'static,
+    {
+        drop(Box::from_raw(this.cast::<T>()))
+    }
+
+    unsafe fn v_clone<T>(this: *const ()) -> Any
+    where
+        T: Clone + Send + Sync + 'static,
+    {
+        let x = Clone::clone(&*this.cast::<T>());
+        Any::new(x)
+    }
+}
+
+impl Any {
+    pub fn new<T>(x: T) -> Self
+    where
+        T: Clone + Send + Sync + 'static,
+    {
+        unsafe {
+            Self {
+                data: NonNull::new_unchecked(Box::into_raw(Box::new(x))).cast(),
+                vtable: &AnyVTable {
+                    type_id: AnyVTable::v_type_id::<T>,
+                    drop: AnyVTable::v_drop::<T>,
+                    clone: AnyVTable::v_clone::<T>,
+                },
+            }
+        }
+    }
+
+    pub fn type_id(&self) -> TypeId {
+        unsafe { (self.vtable.type_id)() }
+    }
+
+    pub fn downcast<T>(self) -> Result<Box<T>, Self>
+    where
+        T: Send + Sync + 'static,
+    {
+        if self.type_id() == TypeId::of::<T>() {
+            let ptr = self.data.as_ptr().cast::<T>();
+            mem::forget(self);
+            unsafe { Ok(Box::from_raw(ptr)) }
+        } else {
+            Err(self)
+        }
+    }
+
+    pub fn downcast_ref<T>(&self) -> Result<&T, ()>
+    where
+        T: Send + Sync + 'static,
+    {
+        if self.type_id() == TypeId::of::<T>() {
+            let ptr = self.data.as_ptr().cast::<T>();
+            unsafe { Ok(&*ptr) }
+        } else {
+            Err(())
+        }
+    }
+}
+
+impl Clone for Any {
+    fn clone(&self) -> Self {
+        unsafe { (self.vtable.clone)(self.data.as_ptr()) }
+    }
+}
+
+impl Drop for Any {
+    fn drop(&mut self) {
+        unsafe { (self.vtable.drop)(self.data.as_ptr()) }
+    }
+}
+
+impl fmt::Debug for Any {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "Any {{ .. }}")
+    }
+}
+
+// =================================================================================
 trait Foo {
     fn foo1(&self);
     fn foo2(&self)
