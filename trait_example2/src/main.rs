@@ -1,4 +1,5 @@
 use std::io::Write;
+use std::mem;
 
 // ================================================================================================
 // https://cotigao.medium.com/dyn-impl-and-trait-objects-rust-fd7280521bea
@@ -6,9 +7,9 @@ trait Animal {
     fn talk(&self);
 }
 
-struct Cat {}
+struct Cat;
 
-struct Dog {}
+struct Dog;
 
 impl Animal for Cat {
     fn talk(&self) {
@@ -66,6 +67,46 @@ fn animal() -> Box<dyn Animal> {
 //     }
 //     Cat {}
 // }
+
+// FIXME: error
+// fn animal3() -> Animal {}
+
+fn test<T: Animal>(arg: T) {
+    arg.talk();
+}
+
+fn test2(arg: &dyn Animal) {
+    arg.talk();
+}
+
+fn test3(arg: Box<dyn Animal>) {
+    arg.talk();
+}
+
+// https://zhuanlan.zhihu.com/p/23791817
+pub struct TraitObject {
+    pub data: *mut (),
+    pub vtable: *mut (),
+}
+
+// 参数是 trait object 类型，p 是一个胖指针
+fn print_traitobject(p: &dyn Animal) {
+    // 使用 transmute 执行强制类型转换，把变量 p 的内部数据取出来
+    let (data, vtable): (usize, usize) = unsafe { mem::transmute(p) };
+    println!("TraitObject    [data:{}, vtable:{}]", data, vtable);
+    unsafe {
+        // 使用 as 执行强制类型转换，将 vtable 从 `usize` 类型转为 `*const usize` 类型
+        let v: *const usize = vtable as *const () as *const usize;
+        // 打印出指针 v 指向的内存区间的值
+        println!(
+            "data in vtable [{}, {}, {}, {}]",
+            *v,
+            *v.offset(1),
+            *v.offset(2),
+            *v.offset(3)
+        );
+    }
+}
 
 // ================================================================================================
 // https://stackoverflow.com/questions/27567849/what-makes-something-a-trait-object
@@ -133,4 +174,65 @@ fn main() {
     // This function takes any obj which implements Print trait
     // We could, at runtime, change the specfic type as long as it implements the Print trait
     dynamic_dispatch(&point);
+
+    println!("================================================================");
+    let cat = Cat;
+    let p_cat = &cat;
+    let p_dog = p_cat as &dyn Animal;
+    println!(
+        "Size of p_cat {}, Size of p_dog {}",
+        mem::size_of_val(&p_cat),
+        mem::size_of_val(&p_dog)
+    );
+
+    let cat_talk: usize = unsafe { mem::transmute::<fn(&Cat), usize>(Cat::talk) };
+    let dog_talk: usize = unsafe { mem::transmute::<fn(&Dog), usize>(Dog::talk) };
+    println!("Cat::talk {}", cat_talk);
+    println!("Dog::talk {}", dog_talk);
+
+    print_traitobject(p_dog);
+    let dog = Dog;
+    print_traitobject(&dog as &dyn Animal);
+
+    println!("================================================================");
+    let x = 1_i32;
+    x.foo1();
+    x.foo2();
+    let p = &x as &dyn Foo;
+    p.foo1();
+    // p.foo2(); // FIXME: error
+
+    let mut i = 1;
+    // let p: &mut dyn Double = &mut i as &mut dyn Double;
+    // p.double();
+}
+
+trait Foo {
+    fn foo1(&self);
+    fn foo2(&self)
+    where
+        Self: Sized;
+}
+
+impl Foo for i32 {
+    fn foo1(&self) {
+        println!("foo1 {}", self);
+    }
+    fn foo2(&self) {
+        println!("foo2 {}", self);
+    }
+}
+
+trait Double {
+    fn new() -> Self;
+    fn double(&mut self);
+}
+
+impl Double for i32 {
+    fn new() -> i32 {
+        0
+    }
+    fn double(&mut self) {
+        *self *= 2;
+    }
 }
